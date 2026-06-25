@@ -1,0 +1,21 @@
+# Config del túnel mke-prod (locally-managed: credenciales + este config.yaml).
+# Catch-all -> Traefik: el túnel SOLO recibe tráfico de hostnames cuyo CNAME
+# apunta a ESTE túnel (mke-prod), así que enrutamos todo a Traefik y él
+# desmultiplexa por Host. Los subdominios stage son de UN nivel —hello-stage.mishi.com.co—
+# y los de prod van pelados —hello.mishi.com.co— ambos apuntan al mismo túnel.
+# El DNS por-app (CNAME) se crea con:
+#   cloudflared tunnel route dns mke-prod hello-stage.mishi.com.co
+#   cloudflared tunnel route dns mke-prod hello.mishi.com.co
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudflared-config
+  namespace: cloudflare
+data:
+  config.yaml: |
+    tunnel: mke-prod
+    credentials-file: /etc/creds/credentials.json
+    metrics: 0.0.0.0:2000
+    no-autoupdate: true
+    ingress:
+      - service: http://traefik.ingress.svc.cluster.local:80

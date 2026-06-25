@@ -1,0 +1,15 @@
+# Traefik para Mishi-Stage (k3d en la pc home).
+# Modelo "tunnel-only": cloudflared corre DENTRO del clúster y habla con Traefik
+# por ClusterIP (traefik.ingress.svc.cluster.local:80). NADIE entra por los puertos
+# 80/443 del host → no hace falta LoadBalancer/servicelb ni mapear puertos en k3d.
+# TLS lo termina el edge de Cloudflare; Traefik sirve HTTP plano puertas adentro.
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+service:
+  type: ClusterIP
+providers:
+  kubernetesIngress:
+    enabled: true
+  kubernetesCRD:
+    enabled: true # habilita IngressRoute si lo prefieres

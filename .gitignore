@@ -18,3 +18,6 @@ terraform.rc
 *.pem
 *-credentials.json
 kubeconfig*
+
+# Contexto AI (tiene Zone/Account IDs, IPs, referencias a secretos) — no commitear
+AI_CONTEXT.md

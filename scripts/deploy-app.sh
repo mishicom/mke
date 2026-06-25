@@ -34,7 +34,7 @@ echo "▶ Desplegando '$APP' a '$TARGET' (tag=$TAG)"
 
 case "$TARGET" in
   local)
-    CONTEXT="k3d-mke"
+    CONTEXT="${KUBE_CONTEXT:-k3d-mke}"
     IMAGE="$APP:dev" # el overlay local referencia :dev
     echo "  • docker build $IMAGE"
     docker build -t "$IMAGE" "$APP_DIR"
