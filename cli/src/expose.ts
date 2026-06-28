@@ -7,17 +7,19 @@ import { ensureDns } from "./dns.js";
 import { doctor } from "./doctor.js";
 
 export interface ExposeOpts {
-  /** servicio del HOST: crea ExternalName→host.k3d.internal + ingress al puerto */
+  /** servicio del HOST (systemd): Service sin selector + Endpoints → gateway:port */
   hostPort?: number;
   /** servicio del CLUSTER ya existente: name:port */
   svc?: string;
   /** override del host público (cuando el subdominio != id del app) */
   host?: string;
+  /** override de la IP del host (gateway docker) para modo host-port */
+  hostIp?: string;
   /** path del ingress (default /) */
   path?: string;
 }
 
-/** Genera el ingress (+ ExternalName si es host) y lo aplica + DNS + verifica. */
+/** Genera el ingress (+ Service/Endpoints si es host) y lo aplica + DNS + verifica. */
 export async function expose(app: string, env: string, opts: ExposeOpts): Promise<void> {
   const spec = envOrThrow(env);
   const host = opts.host ?? hostFor(app, env);
@@ -34,9 +36,8 @@ export async function expose(app: string, env: string, opts: ExposeOpts): Promis
   if (opts.hostPort) {
     svcName = `${app}-host`;
     svcPort = opts.hostPort;
-    docs.push(
-      yamlExternalName(svcName, spec.namespace, opts.hostPort, app),
-    );
+    const ip = opts.hostIp ?? spec.hostGatewayIp;
+    docs.push(yamlHostService(svcName, spec.namespace, opts.hostPort, ip, app));
   } else {
     const [n, p] = opts.svc!.split(":");
     if (!n || !p) throw new Error("--svc debe ser name:port");
@@ -51,7 +52,6 @@ export async function expose(app: string, env: string, opts: ExposeOpts): Promis
   writeFileSync(file, manifest);
   console.log(info(`aplicando ingress en ${spec.context}/${spec.namespace} para ${host}`));
 
-  // asegura namespace
   await run("kubectl", ["--context", spec.context, "create", "namespace", spec.namespace]);
 
   const apply = await run("kubectl", ["--context", spec.context, "apply", "-f", file]);
@@ -66,7 +66,8 @@ export async function expose(app: string, env: string, opts: ExposeOpts): Promis
   await doctor(host, path === "/" ? "/health" : path);
 }
 
-function yamlExternalName(name: string, ns: string, port: number, app: string): string {
+/** Service sin selector + Endpoints a la IP del host (gateway docker). Traefik lo enruta. */
+function yamlHostService(name: string, ns: string, port: number, ip: string, app: string): string {
   return `apiVersion: v1
 kind: Service
 metadata:
@@ -76,11 +77,25 @@ metadata:
     app.kubernetes.io/name: ${app}
     app.kubernetes.io/part-of: mke
 spec:
-  type: ExternalName
-  externalName: host.k3d.internal
   ports:
     - port: ${port}
-      targetPort: ${port}`;
+      targetPort: ${port}
+      protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: ${name}
+  namespace: ${ns}
+  labels:
+    app.kubernetes.io/name: ${app}
+    app.kubernetes.io/part-of: mke
+subsets:
+  - addresses:
+      - ip: ${ip}
+    ports:
+      - port: ${port}
+        protocol: TCP`;
 }
 
 function yamlIngress(

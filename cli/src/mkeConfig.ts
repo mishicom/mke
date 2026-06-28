@@ -9,6 +9,11 @@
 //    el viejo AI_CONTEXT.md de mke. Un tunnel por entorno.
 //  - `cloudflared tunnel route dns <NOMBRE> <host>` puede enrutar al tunnel
 //    equivocado (mandó a `lmstudio`); SIEMPRE usar el UUID + `--overwrite-dns`.
+//  - Para exponer un servicio del HOST a través del cluster NO sirve un Service
+//    ExternalName: Traefik los rechaza por defecto (allowExternalNameServices=
+//    false) → 404. Se usa Service sin selector + Endpoints a la IP del gateway
+//    docker del cluster (el host), que Traefik sí enruta. El host escucha en
+//    0.0.0.0 y es alcanzable desde el cluster en esa IP.
 
 export interface EnvSpec {
   /** contexto kubectl */
@@ -19,6 +24,8 @@ export interface EnvSpec {
   tunnelUuid: string;
   /** sufijo del subdominio público: <app><suffix>.mishi.com.co */
   hostSuffix: string;
+  /** IP del gateway docker del cluster = el host, para servicios del host */
+  hostGatewayIp: string;
 }
 
 export const ENVS: Record<string, EnvSpec> = {
@@ -27,18 +34,21 @@ export const ENVS: Record<string, EnvSpec> = {
     namespace: "local",
     tunnelUuid: "f312541c-c13b-4fbc-b342-b679e64e3228", // mke-local
     hostSuffix: "-local",
+    hostGatewayIp: "172.18.0.1",
   },
   stage: {
     context: "k3d-mke-prod", // ¡stage vive en el cluster prod!
     namespace: "stage",
     tunnelUuid: "3ade5843-cfcc-4526-bbd0-a8256d1640ad", // mke-stage
     hostSuffix: "-stage",
+    hostGatewayIp: "172.20.0.1",
   },
   prod: {
     context: "k3d-mke-prod",
     namespace: "prod",
     tunnelUuid: "dde2337f-7e0a-47b7-aec0-dfc9b10539af", // mke-prod
     hostSuffix: "",
+    hostGatewayIp: "172.20.0.1",
   },
 };
 
