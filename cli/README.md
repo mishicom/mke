@@ -1,8 +1,8 @@
 # `mke` — CLI de plataforma MKE
 
 Operaciones deterministas de MKE como **programa**, no como prosa que un agente
-re-interpreta cada vez. v1: `expose`, `dns`, `doctor`. El build/deploy
-(`scripts/deploy-app.sh`, `bootstrap-prod.sh`) se migran después.
+re-interpreta cada vez. Comandos: `deploy`, `rollout`, `expose`, `dns`, `doctor`,
+`ls`. Reemplaza el viejo `scripts/deploy-app.sh` (paths/contexto stale).
 
 ## Instalar
 
@@ -15,8 +15,17 @@ mke help
 ## Comandos
 
 ```bash
+# Desplegar una app: build → k3d image import → apply -k overlays/<env> → rollout → doctor
+# (el mismo loop cerrado que corre el runner self-hosted). El repo se busca en
+# <appsRoot>/<app> (appsRoot = $MKE_APPS_ROOT o ~/mishicomco).
+mke deploy polla-futbolera stage
+mke deploy travelhabitco prod --deploy travelhabit-backend   # Deployment ≠ id del app
+
+# Reiniciar pods sin rebuild (tag mutable :dev, o reciclar tras cambiar un Secret)
+mke rollout omni-whatsapp stage
+
 # Exponer un servicio del HOST (systemd) en <app>-<env>.mishi.com.co
-# (crea ExternalName→host.k3d.internal + ingress + DNS + verifica)
+# (crea Service sin selector + Endpoints al gateway docker + ingress + DNS + verifica)
 mke expose agents-mishi stage --host-port 8787
 
 # Exponer un servicio del CLUSTER ya existente
@@ -27,20 +36,25 @@ mke dns agents-stage.mishi.com.co stage
 
 # Diagnosticar la cadena pública y saber QUÉ capa está rota
 mke doctor agents-stage.mishi.com.co
+
+# Inventario de lo publicado (host → servicio) por entorno
+mke ls stage
 ```
 
 `--host <fqdn>` cuando el subdominio ≠ id del app (p.ej. `omni-whatsapp` → `omni`).
+`--deploy <nombre>` cuando el Deployment ≠ id del app (p.ej. `travelhabitco` → `travelhabit-backend`).
 
 ## Conocimiento horneado (antes se re-diagnosticaba a mano)
 
 Vive en `src/mkeConfig.ts`. Lo no obvio:
 
-- **stage y prod son namespaces del MISMO cluster `k3d-mke-prod`.** El contexto
-  `k3d-mke-stage` existe pero su namespace `stage` está vacío (legacy). Aplicar al
-  contexto equivocado da `namespaces "stage" not found`.
-- **cloudflared corre como tunnels del HOST** (systemd: `mke-stage`, `mke-prod`,
-  `mke-local`, `lmstudio`, `mke-ssh`), **no in-cluster** como dice el viejo
-  `AI_CONTEXT.md` de mke. Un tunnel (UUID) por entorno.
+- **Un solo cluster en el PC gamer: `k3d-mke-prod`**, con stage y prod como
+  **namespaces** del mismo cluster. (El cluster/contexto/tunnel `mke-stage` se
+  eliminó por confuso — era legacy y sólo servía un demo.) Aplicar al contexto
+  equivocado da `namespaces "stage" not found`.
+- **El cluster lo sirve un solo tunnel cloudflared, `mke-prod`**
+  (`dde2337f…`, wildcard `*.mishi.com.co → Traefik`); stage y prod usan ese mismo
+  tunnel. `mke-local` sirve el cluster del laptop.
 - **`cloudflared tunnel route dns <NOMBRE> <host>` puede enrutar al tunnel
   equivocado** (mandó a `lmstudio`). Usar SIEMPRE el UUID + `--overwrite-dns`.
 

@@ -1,10 +1,13 @@
 #!/usr/bin/env -S node --import tsx
 // CLI `mke` — operaciones deterministas de la plataforma MKE.
-// v1: expose · dns · doctor  (deploy/build se migran desde scripts/deploy-app.sh)
+// deploy · expose · rollout · dns · doctor · ls
 
 import { expose } from "./expose.js";
 import { ensureDns } from "./dns.js";
 import { doctor } from "./doctor.js";
+import { deploy } from "./deploy.js";
+import { rollout } from "./rollout.js";
+import { ls } from "./ls.js";
 import { hostFor } from "./mkeConfig.js";
 
 function parseFlags(args: string[]): { positional: string[]; flags: Record<string, string | boolean> } {
@@ -30,21 +33,50 @@ function parseFlags(args: string[]): { positional: string[]; flags: Record<strin
 
 const HELP = `mke — CLI de plataforma MKE
 
+  mke deploy <app> <env>                        build → k3d import → apply -k overlays/<env> → rollout → doctor
+        opciones: --tag <t>  --dir <repo>  --deploy <nombre-deployment>  --host <fqdn>
+  mke rollout <app> <env>                        rollout restart + status (sin rebuild; tag mutable / reciclar pods)
+        opciones: --deploy <nombre-deployment>
   mke expose <app> <env> --host-port <N>        expone un servicio del HOST (systemd) en <app><suffix>.mishi.com.co
   mke expose <app> <env> --svc <name:port>      expone un servicio del CLUSTER ya existente
         opciones: --host <fqdn>  (override del subdominio)   --path </>
-  mke dns <host> <env>                          crea/repara el CNAME al tunnel correcto del entorno
-  mke doctor <host> [path]                      diagnostica la cadena pública y dice qué capa está rota
+  mke dns <host|app> <env>                       crea/repara el CNAME al tunnel correcto del entorno
+  mke doctor <host> [path]                       diagnostica la cadena pública y dice qué capa está rota
+  mke ls [env]                                    inventario de ingresses (host → servicio) por entorno
 
   env = local | stage | prod
-  ej:  mke expose agents-mishi stage --host-port 8787
-       mke doctor agents-stage.mishi.com.co`;
+  ej:  mke deploy polla-futbolera stage
+       mke expose agents-mishi stage --host-port 8787
+       mke doctor agents-stage.mishi.com.co
+       mke ls stage`;
 
 async function main() {
   const [, , cmd, ...rest] = process.argv;
   const { positional, flags } = parseFlags(rest);
 
   switch (cmd) {
+    case "deploy": {
+      const [app, env] = positional;
+      if (!app || !env) return fail("uso: mke deploy <app> <env> [--tag t] [--dir repo] [--deploy name]");
+      await deploy(app, env, {
+        tag: typeof flags.tag === "string" ? flags.tag : undefined,
+        dir: typeof flags.dir === "string" ? flags.dir : undefined,
+        deploy: typeof flags.deploy === "string" ? flags.deploy : undefined,
+        host: typeof flags.host === "string" ? flags.host : undefined,
+      });
+      break;
+    }
+    case "rollout": {
+      const [app, env] = positional;
+      if (!app || !env) return fail("uso: mke rollout <app> <env> [--deploy name]");
+      await rollout(app, env, typeof flags.deploy === "string" ? flags.deploy : undefined);
+      break;
+    }
+    case "ls": {
+      const [env] = positional;
+      await ls(env);
+      break;
+    }
     case "expose": {
       const [app, env] = positional;
       if (!app || !env) return fail("uso: mke expose <app> <env> --host-port N | --svc name:port");

@@ -2,11 +2,12 @@
 // Fuente única de verdad para el CLI. Si la realidad cambia, se edita ACÁ.
 //
 // Hechos no obvios (descubiertos diagnosticando, 2026-06-28):
-//  - stage y prod son NAMESPACES del MISMO cluster `k3d-mke-prod`.
-//    `k3d-mke-stage` existe como contexto pero su namespace `stage` está vacío
-//    (legacy). Aplicar al contexto equivocado da "namespaces stage not found".
-//  - cloudflared corre como tunnels del HOST (systemd), NO in-cluster como dice
-//    el viejo AI_CONTEXT.md de mke. Un tunnel por entorno.
+//  - Un SOLO cluster en el PC gamer: `k3d-mke-prod`, con stage y prod como
+//    NAMESPACES del mismo cluster. El cluster/contexto/tunnel `mke-stage` se
+//    eliminó (era legacy y confuso). Aplicar al contexto equivocado da
+//    "namespaces stage not found".
+//  - El cluster lo sirve un solo tunnel cloudflared `mke-prod` (in-cluster, ns
+//    cloudflare); `mke-local` sirve el cluster del laptop.
 //  - `cloudflared tunnel route dns <NOMBRE> <host>` puede enrutar al tunnel
 //    equivocado (mandó a `lmstudio`); SIEMPRE usar el UUID + `--overwrite-dns`.
 //  - Para exponer un servicio del HOST a través del cluster NO sirve un Service
@@ -15,9 +16,14 @@
 //    docker del cluster (el host), que Traefik sí enruta. El host escucha en
 //    0.0.0.0 y es alcanzable desde el cluster en esa IP.
 
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 export interface EnvSpec {
   /** contexto kubectl */
   context: string;
+  /** nombre del cluster k3d (para `k3d image import -c <cluster>`) */
+  cluster: string;
   /** namespace dentro del cluster */
   namespace: string;
   /** UUID del tunnel cloudflared del host que sirve este entorno */
@@ -31,6 +37,7 @@ export interface EnvSpec {
 export const ENVS: Record<string, EnvSpec> = {
   local: {
     context: "k3d-mke-local",
+    cluster: "mke-local",
     namespace: "local",
     tunnelUuid: "f312541c-c13b-4fbc-b342-b679e64e3228", // mke-local
     hostSuffix: "-local",
@@ -38,6 +45,7 @@ export const ENVS: Record<string, EnvSpec> = {
   },
   stage: {
     context: "k3d-mke-prod", // ¡stage vive en el cluster prod!
+    cluster: "mke-prod",
     namespace: "stage",
     tunnelUuid: "dde2337f-7e0a-47b7-aec0-dfc9b10539af", // mke-prod (el cluster ÚNICO lo sirve este tunnel; mke-stage 3ade5843 es legacy, NO enruta a Traefik)
     hostSuffix: "-stage",
@@ -45,6 +53,7 @@ export const ENVS: Record<string, EnvSpec> = {
   },
   prod: {
     context: "k3d-mke-prod",
+    cluster: "mke-prod",
     namespace: "prod",
     tunnelUuid: "dde2337f-7e0a-47b7-aec0-dfc9b10539af", // mke-prod
     hostSuffix: "",
@@ -65,4 +74,14 @@ export function envOrThrow(env: string): EnvSpec {
   const spec = ENVS[env];
   if (!spec) throw new Error(`entorno desconocido: ${env} (usa local|stage|prod)`);
   return spec;
+}
+
+/**
+ * Raíz del workspace donde viven los repos de las apps como hermanos
+ * (`<appsRoot>/<app>`). Override con MKE_APPS_ROOT; default ~/mishicomco.
+ * El CLI vive en `<appsRoot>/mke/cli`, pero al correr desde un git worktree
+ * la ruta relativa no aplica, así que se fija por convención/env.
+ */
+export function appsRoot(): string {
+  return process.env.MKE_APPS_ROOT ?? join(homedir(), "mishicomco");
 }
