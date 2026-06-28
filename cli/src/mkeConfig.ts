@@ -39,7 +39,7 @@ export const ENVS: Record<string, EnvSpec> = {
   stage: {
     context: "k3d-mke-prod", // ¡stage vive en el cluster prod!
     namespace: "stage",
-    tunnelUuid: "3ade5843-cfcc-4526-bbd0-a8256d1640ad", // mke-stage
+    tunnelUuid: "dde2337f-7e0a-47b7-aec0-dfc9b10539af", // mke-prod (el cluster ÚNICO lo sirve este tunnel; mke-stage 3ade5843 es legacy, NO enruta a Traefik)
     hostSuffix: "-stage",
     hostGatewayIp: "172.20.0.1",
   },
